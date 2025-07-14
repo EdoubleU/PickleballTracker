@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pickleball Ladder League Tracker</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    h2 { margin-top: 30px; }
+    label, input, select, button { margin: 5px 0; display: block; }
+    table { border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: center; }
+    input[type="text"], input[type="number"] { width: 150px; }
+    input[type="number"].score { width: 50px; }
+    .division { margin-bottom: 40px; }
+    .hidden { display: none; }
+    .controls { margin: 20px 0; }
+  </style>
+</head>
+<body>
+
+<h1>Pickleball Ladder League Tracker</h1>
+
+<!-- Setup Page -->
+<div id="setup">
+  <label>Number of Divisions: <input type="number" id="numDivisions" min="1" max="10" value="2"></label>
+  <label>Number of Weeks: <input type="number" id="numWeeks" min="1" max="12" value="7"></label>
+  <button onclick="generateDivisionForms()">Next</button>
+  
+  <div id="divisionForms"></div>
+  <button id="startTrackerBtn" class="hidden" onclick="startTracker()">Start Tracker</button>
+</div>
+
+<!-- Tracker Page -->
+<div id="tracker" class="hidden">
+  <div class="controls">
+    <button onclick="saveToLocalStorage()">📂 Save</button>
+    <button onclick="loadFromLocalStorage()">📅 Load</button>
+    <button onclick="exportCSV()">📄 Export CSV</button>
+    <button onclick="exportJSON()">📄 Export JSON</button>
+    <input type="file" id="importJson" accept=".json" onchange="importJSON(event)">
+  </div>
+  <div id="trackerContent"></div>
+</div>
+
+<script>
+let NUM_WEEKS = 7;
+let divisions = {};
+let data = {};
+
+function generateDivisionForms() {
+  const num = parseInt(document.getElementById('numDivisions').value);
+  NUM_WEEKS = parseInt(document.getElementById('numWeeks').value);
+  const container = document.getElementById('divisionForms');
+  container.innerHTML = "";
+
+  for (let i = 1; i <= num; i++) {
+    const div = document.createElement("div");
+    div.innerHTML = `
+      <h2>Division ${i}</h2>
+      <label>Division Name: <input type="text" id="divName${i}" value="Division ${i}"></label>
+      <label>Number of Players: <input type="number" id="numPlayers${i}" min="1" max="16" value="4" onchange="updatePlayerInputs(${i})"></label>
+      <div id="players${i}"></div>
+    `;
+    container.appendChild(div);
+    updatePlayerInputs(i);
+  }
+
+  document.getElementById("startTrackerBtn").classList.remove("hidden");
+}
+
+function updatePlayerInputs(index) {
+  const numPlayers = parseInt(document.getElementById(`numPlayers${index}`).value);
+  const container = document.getElementById(`players${index}`);
+  container.innerHTML = "";
+  for (let j = 1; j <= numPlayers; j++) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = `Player ${j} Name`;
+    input.id = `div${index}player${j}`;
+    container.appendChild(input);
+    container.appendChild(document.createElement("br"));
+  }
+}
+
+function startTracker() {
+  const numDiv = parseInt(document.getElementById('numDivisions').value);
+  divisions = {};
+
+  for (let i = 1; i <= numDiv; i++) {
+    const divName = document.getElementById(`divName${i}`).value.trim();
+    const numPlayers = parseInt(document.getElementById(`numPlayers${i}`).value);
+    const players = [];
+
+    for (let j = 1; j <= numPlayers; j++) {
+      const playerName = document.getElementById(`div${i}player${j}`).value.trim();
+      if (playerName) players.push(playerName);
+    }
+
+    divisions[divName] = players;
+  }
+
+  initializeData();
+  document.getElementById('setup').classList.add('hidden');
+  document.getElementById('tracker').classList.remove('hidden');
+  renderTracker();
+}
+
+function initializeData() {
+  data = {};
+  for (const [division, players] of Object.entries(divisions)) {
+    data[division] = players.map(name => ({
+      name,
+      earned: Array(NUM_WEEKS).fill(""),
+      possible: Array(NUM_WEEKS).fill("")
+    }));
+  }
+}
+
+function renderTracker() {
+  const tracker = document.getElementById("trackerContent");
+  tracker.innerHTML = "";
+
+  for (const [division, players] of Object.entries(data)) {
+    const div = document.createElement("div");
+    div.className = "division";
+    div.innerHTML = `<h2>${division}</h2>`;
+
+    const table = document.createElement("table");
+    const header = document.createElement("tr");
+    header.innerHTML = `
+      <th>Player</th>
+      ${[...Array(NUM_WEEKS)].map((_, i) => `<th>W${i+1}<br>Earned</th><th>Possible</th>`).join('')}
+      <th>Total Earned</th>
+      <th>Total Possible</th>
+      <th>Total %</th>
+    `;
+    table.appendChild(header);
+
+    const sortedPlayers = [...players].sort((a, b) => getTotalPct(b) - getTotalPct(a));
+
+    sortedPlayers.forEach(player => {
+      const row = document.createElement("tr");
+
+      const nameCell = document.createElement("td");
+      nameCell.textContent = player.name;
+      row.appendChild(nameCell);
+
+      for (let w = 0; w < NUM_WEEKS; w++) {
+        const earnedInput = document.createElement("input");
+        const possibleInput = document.createElement("input");
+
+        earnedInput.value = player.earned[w];
+        possibleInput.value = player.possible[w];
+        earnedInput.classList.add("score");
+        possibleInput.classList.add("score");
+
+        earnedInput.oninput = () => {
+          player.earned[w] = earnedInput.value;
+          renderTracker();
+        };
+        possibleInput.oninput = () => {
+          player.possible[w] = possibleInput.value;
+          renderTracker();
+        };
+
+        const earnedCell = document.createElement("td");
+        const possibleCell = document.createElement("td");
+        earnedCell.appendChild(earnedInput);
+        possibleCell.appendChild(possibleInput);
+
+        row.appendChild(earnedCell);
+        row.appendChild(possibleCell);
+      }
+
+      const totalEarned = player.earned.reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+      const totalPossible = player.possible.reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+      const pct = totalPossible ? ((totalEarned / totalPossible) * 100).toFixed(2) : "";
+
+      const totalEarnedCell = document.createElement("td");
+      totalEarnedCell.textContent = totalEarned;
+      const totalPossibleCell = document.createElement("td");
+      totalPossibleCell.textContent = totalPossible;
+      const pctCell = document.createElement("td");
+      pctCell.textContent = pct ? pct + "%" : "";
+
+      row.appendChild(totalEarnedCell);
+      row.appendChild(totalPossibleCell);
+      row.appendChild(pctCell);
+
+      table.appendChild(row);
+    });
+
+    div.appendChild(table);
+    tracker.appendChild(div);
+  }
+}
+
+function getTotalPct(player) {
+  let totalEarned = 0, totalPossible = 0;
+  for (let i = 0; i < NUM_WEEKS; i++) {
+    totalEarned += parseFloat(player.earned[i]) || 0;
+    totalPossible += parseFloat(player.possible[i]) || 0;
+  }
+  return totalPossible ? (totalEarned / totalPossible) * 100 : NaN;
+}
+
+function saveToLocalStorage() {
+  const saved = { weeks: NUM_WEEKS, divisions, data };
+  localStorage.setItem("pickleballLadderData", JSON.stringify(saved));
+  alert("Saved!");
+}
+
+function loadFromLocalStorage() {
+  const raw = localStorage.getItem("pickleballLadderData");
+  if (raw) {
+    const loaded = JSON.parse(raw);
+    NUM_WEEKS = loaded.weeks;
+    divisions = loaded.divisions;
+    data = loaded.data;
+    document.getElementById('setup').classList.add('hidden');
+    document.getElementById('tracker').classList.remove('hidden');
+    renderTracker();
+  } else {
+    alert("No saved data found.");
+  }
+}
+
+function exportCSV() {
+  let csv = "Division,Player,Total Earned,Total Possible,Total %\n";
+  for (const [division, players] of Object.entries(data)) {
+    players.forEach(player => {
+      const totalEarned = player.earned.reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+      const totalPossible = player.possible.reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+      const pct = totalPossible ? ((totalEarned / totalPossible) * 100).toFixed(2) : "";
+      csv += `${division},${player.name},${totalEarned},${totalPossible},${pct}\n`;
+    });
+  }
+  downloadFile(csv, "ladder_scores.csv", "text/csv");
+}
+
+function exportJSON() {
+  const saved = { weeks: NUM_WEEKS, divisions, data };
+  const json = JSON.stringify(saved, null, 2);
+  downloadFile(json, "ladder_data.json", "application/json");
+}
+
+function importJSON(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    const loaded = JSON.parse(e.target.result);
+    NUM_WEEKS = loaded.weeks;
+    divisions = loaded.divisions;
+    data = loaded.data;
+    document.getElementById('setup').classList.add('hidden');
+    document.getElementById('tracker').classList.remove('hidden');
+    renderTracker();
+  };
+  reader.readAsText(file);
+}
+
+function downloadFile(content, filename, mime) {
+  const blob = new Blob([content], { type: mime });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+}
+</script>
+
+</body>
+</html>
