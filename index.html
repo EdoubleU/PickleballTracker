@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Pickleball Ladder League Tracker</title>
   <style>
     body { font-family: sans-serif; padding: 20px; }
@@ -25,7 +25,7 @@
   <label>Number of Divisions: <input type="number" id="numDivisions" min="1" max="10" value="2"></label>
   <label>Number of Weeks: <input type="number" id="numWeeks" min="1" max="12" value="7"></label>
   <button onclick="generateDivisionForms()">Next</button>
-  
+
   <div id="divisionForms"></div>
   <button id="startTrackerBtn" class="hidden" onclick="startTracker()">Start Tracker</button>
 </div>
@@ -33,7 +33,7 @@
 <!-- Tracker Page -->
 <div id="tracker" class="hidden">
   <div class="controls">
-    <button onclick="saveToLocalStorage()">📂 Save</button>
+    <button onclick="saveToLocalStorage()">💾 Save</button>
     <button onclick="loadFromLocalStorage()">📅 Load</button>
     <button onclick="exportCSV()">📄 Export CSV</button>
     <button onclick="exportJSON()">📄 Export JSON</button>
@@ -153,14 +153,28 @@ function renderTracker() {
         possibleInput.value = player.possible[w];
         earnedInput.classList.add("score");
         possibleInput.classList.add("score");
+        earnedInput.type = "number";
+        possibleInput.type = "number";
+        earnedInput.min = 0;
+        possibleInput.min = 0;
 
+        // Debounce logic
+        let earnedTimeout;
         earnedInput.oninput = () => {
+          clearTimeout(earnedTimeout);
           player.earned[w] = earnedInput.value;
-          renderTracker();
+          earnedTimeout = setTimeout(() => {
+            renderTracker();
+          }, 500);
         };
+
+        let possibleTimeout;
         possibleInput.oninput = () => {
+          clearTimeout(possibleTimeout);
           player.possible[w] = possibleInput.value;
-          renderTracker();
+          possibleTimeout = setTimeout(() => {
+            renderTracker();
+          }, 500);
         };
 
         const earnedCell = document.createElement("td");
